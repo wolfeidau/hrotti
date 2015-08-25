@@ -14,6 +14,7 @@ import (
 
 type Hrotti struct {
 	PersistStore       Persistence
+	authHandler        AuthHandler
 	listeners          map[string]*internalListener
 	listenersWaitGroup sync.WaitGroup
 	maxQueueDepth      int
@@ -28,9 +29,15 @@ type internalListener struct {
 	stop        chan struct{}
 }
 
-func NewHrotti(maxQueueDepth int, persistence Persistence) *Hrotti {
+func NewHrotti(maxQueueDepth int, persistence Persistence, authHandler AuthHandler) *Hrotti {
+
+	if authHandler == nil {
+		authHandler = NoopAuthHandler
+	}
+
 	h := &Hrotti{
 		PersistStore:  persistence,
+		authHandler:   authHandler,
 		listeners:     make(map[string]*internalListener),
 		maxQueueDepth: maxQueueDepth,
 		clients:       newClients(),
@@ -142,31 +149,7 @@ func (h *Hrotti) Stop() {
 
 func (h *Hrotti) InitClient(conn net.Conn) {
 	var sendSessionID bool
-	/*var cph fixedHeader
 
-	//create a bufio conn from the network connection
-	bufferedConn := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-	//first byte off the wire should be the msg type
-	typeByte, _ := bufferedConn.ReadByte()
-	//unpack the first byte into the fixed header
-	cph.unpack(typeByte)
-
-	if cph.messageType != CONNECT {
-		//If the first packet isn't a CONNECT, it's not MQTT or not compliant, so kill the connection and we're done.
-		conn.Close()
-		return
-	}
-
-	//read the remaining length field from the network, this can be 1-3 bytes generally although in this case
-	//it should always be 1 byte, but using the generic method.
-	cph.remainingLength = decodeLength(bufferedConn)
-	//a buffer to receive the rest of the connect packet
-	body := make([]byte, cph.remainingLength)
-	io.ReadFull(bufferedConn, body)
-	//create a new empty CONNECT packet to unpack the body of the CONNECT into
-	cp := newControlPacket(CONNECT).(*connectPacket)
-	cp.fixedHeader = cph
-	cp.unpack(body)*/
 	rp, _ := ReadPacket(conn)
 	cp := rp.(*ConnectPacket)
 
@@ -188,6 +171,20 @@ func (h *Hrotti) InitClient(conn net.Conn) {
 	} else {
 		//Put up an INFO message with the client id and the address they're connecting from.
 		INFO.Println(ConnackReturnCodes[rc], cp.ClientIdentifier, conn.RemoteAddr())
+	}
+
+	// check the auth handler
+	err, userID := h.authHandler(cp)
+
+	if err != nil {
+		//create and send a CONNACK with the correct rc in it.
+		ca := NewControlPacket(CONNACK).(*ConnackPacket)
+		ca.ReturnCode = CONN_REF_BAD_USER_PASS
+		ca.Write(conn)
+		//Put up a local message indicating an errored connection attempt and close the connection
+		ERROR.Println(ConnackReturnCodes[rc], conn.RemoteAddr())
+		conn.Close()
+		return
 	}
 
 	//check for a zero length client id and if it exists create one from the UUID library and return
@@ -224,7 +221,7 @@ func (h *Hrotti) InitClient(conn net.Conn) {
 		go c.Start(cp, h)
 	} else {
 		//This is a brand new client so create a NewClient and add to the clients map
-		c = newClient(conn, cp.ClientIdentifier, h.maxQueueDepth)
+		c = newClient(conn, cp.ClientIdentifier, userID, h.maxQueueDepth)
 		h.clients.list[cp.ClientIdentifier] = c
 		if sendSessionID {
 			go func() {

@@ -19,6 +19,7 @@ type Client struct {
 	sync.WaitGroup
 	messageIDs
 	clientID         string
+	userID           string
 	conn             net.Conn
 	keepAlive        uint16
 	state            State
@@ -33,7 +34,7 @@ type Client struct {
 	takeOver         bool
 }
 
-func newClient(conn net.Conn, clientID string, maxQDepth int) *Client {
+func newClient(conn net.Conn, clientID, userID string, maxQDepth int) *Client {
 	return &Client{
 		conn:             conn,
 		clientID:         clientID,
@@ -213,42 +214,6 @@ func (c *Client) Receive(hrotti *Hrotti) {
 			return
 		//otherwise...
 		default:
-			/*var cph FixedHeader
-			var err error
-			var body []byte
-			//var typeByte byte
-			//the msgType will always be the first byte read from the network.
-			//typeByte, err = c.bufferedConn.Peek(1)
-			//if there was an error reading from the network, print it and call stop
-			//true here means send the will message, if there is one, and return.
-			if err != nil {
-				ERROR.Println(err.Error(), c.clientID, c.conn.RemoteAddr())
-				go c.Stop(true, hrotti)
-				return
-			}
-			//we've received a message so reset the keepalive timer.
-			c.ResetTimer()
-			//unpack the first byte into the fixedHeader and read the remaining length
-			cph.unpack(typeByte)
-			cph.RemainingLength = decodeLength(c.bufferedConn)
-			//if the remaining length is > 0 then there is more to read for this packet so
-			//make the body slice the size of the remaining data. readfull will not return
-			//until the target slice is full or there was an error
-			if cph.remainingLength > 0 {
-				body = make([]byte, cph.remainingLength)
-				_, err = io.ReadFull(c.bufferedConn, body)
-				//if there was an error (such as broken network), call Stop (send will message)
-				//and return.
-				if err != nil {
-					go c.Stop(true, hrotti)
-					return
-				}
-			}
-			//MQTT allows large messages that could take a long time to receive, ideally here
-			//we should pause the keepalive timer, for now we just reset the timer again once
-			//we've recevied the message.
-			c.ResetTimer()
-			//switch on the type of message we've received*/
 			cp, err := ReadPacket(c.conn)
 			if err != nil {
 				ERROR.Println(err.Error(), c.clientID)
@@ -262,7 +227,7 @@ func (c *Client) Receive(hrotti *Hrotti) {
 			switch cp.(type) {
 			//a second CONNECT packet is a protocol violation, so Stop (send will) and return.
 			case *ConnectPacket:
-				ERROR.Println("Received second CONNECT from", c.clientID)
+				ERROR.Println("Received second CONNECT from", c.clientID, c.userID)
 				go c.Stop(true, hrotti)
 				return
 			//client wishes to disconnect so Stop (don't send will) and return.
