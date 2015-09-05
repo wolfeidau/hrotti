@@ -174,7 +174,7 @@ func (h *Hrotti) InitClient(conn net.Conn) {
 	}
 
 	// check the auth handler
-	err, userID := h.authHandler(cp)
+	userID, err:= h.authHandler(cp)
 
 	if err != nil {
 		//create and send a CONNACK with the correct rc in it.
