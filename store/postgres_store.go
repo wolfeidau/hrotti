@@ -42,12 +42,13 @@ func (s *PostgresStore) Health() bool {
 // AuthUser validate the credentials against Postgres.
 func (s *PostgresStore) AuthUser(token string) (string, error) {
 
-	log.Printf("user token=%s", token)
+	log.Println("user token")
 
 	var uid string
 
-	err := s.db.QueryRow("SELECT user_id FROM device_tokens WHERE token = ?", token).Scan(&uid)
+	err := s.db.QueryRow("SELECT user_id FROM device_tokens WHERE token = $1", token).Scan(&uid)
 	if err != nil {
+		log.Printf("woops %s", err)
 		if err == sql.ErrNoRows {
 			return "", ErrUserNotFound
 		}

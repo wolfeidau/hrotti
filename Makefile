@@ -11,9 +11,10 @@ build:
 test:
 	go test ./...
 
-docker-build:
+docker-build: build
 	docker build -t simple_broker:${HASH} .
-	docker tag simple_broker:${HASH} simple_broker:latest
+	docker tag -f simple_broker:${HASH} simple_broker:latest
+	docker tag simple_broker:${HASH} gcr.io/cohort-staging/simple_broker:${HASH} 
 
 release: build
 	rm -rf release && mkdir release

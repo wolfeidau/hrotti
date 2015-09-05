@@ -1,7 +1,7 @@
 #!/bin/bash
 
 docker run \
-  -e "DATABASE_NAME=identity_development" \
+  -e "PGDATABASE=identity_development" \
   -e "PGHOST=postgres" \
   -e "PGUSER=postgres" \
   -e "PGPASSWORD=sup" \
