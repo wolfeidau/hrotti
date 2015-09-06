@@ -18,7 +18,7 @@ func main() {
 	userStore := store.NewPostgresStore("")
 
 	r := &hrotti.MemoryPersistence{}
-	h := hrotti.NewHrotti(100, r, newHandler(userStore))
+	h := hrotti.NewHrotti(100, r, newAuthHandler(userStore))
 	hrotti.ERROR = log.New(os.Stdout, "ERROR: ", log.Ldate|log.Ltime)
 	hrotti.INFO = log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime)
 	hrotti.DEBUG = log.New(os.Stdout, "DEBUG: ", log.Ldate|log.Ltime)
@@ -30,7 +30,7 @@ func main() {
 	h.Stop()
 }
 
-func newHandler(store store.Store) hrotti.AuthHandler {
+func newAuthHandler(store store.Store) hrotti.AuthHandler {
 	return func(cp *packets.ConnectPacket) (hrotti.AuthContext, error) {
 
 		if cp.UsernameFlag {
@@ -63,25 +63,47 @@ func (lac *localAuthContext) GetUserID() string {
 var re = regexp.MustCompile(`^(?P<uid>[\w-]+)\..*$`)
 
 func (lac *localAuthContext) CheckPublish(pp *packets.PublishPacket) bool {
+
 	hrotti.DEBUG.Printf("Check Publish topic=%s", pp.TopicName)
 
-	n1 := re.SubexpNames()
-	r2 := re.FindAllStringSubmatch(pp.TopicName, -1)
+	md := checkTopicName(pp.TopicName)
 
-	// no match returned
-	if len(r2) > 0 {
-
-		md := map[string]string{}
-		for i, n := range r2[0] {
-			md[n1[i]] = n
-		}
-
-		if md["uid"] == lac.GetUserID() {
-			return true
-		}
+	if md["uid"] == lac.GetUserID() {
+		return true
 	}
 
 	hrotti.INFO.Printf("Skipped Publish topic=%s", pp.TopicName)
 
 	return false
+}
+
+func (lac *localAuthContext) CheckSubscription(topics []string, qoss []byte) ([]string, []byte) {
+
+	for i, t := range topics {
+		md := checkTopicName(t)
+
+		if md["uid"] != lac.GetUserID() {
+			hrotti.INFO.Printf("Skipped Subscription topic=%s qos=%x", t, qoss[i])
+			topics = append(topics[:i], topics[i+1:]...)
+			qoss = append(qoss[:i], qoss[i+1:]...)
+		}
+	}
+	return topics, qoss
+}
+
+func checkTopicName(topic string) map[string]string {
+	n1 := re.SubexpNames()
+	r2 := re.FindAllStringSubmatch(topic, -1)
+
+	md := map[string]string{}
+
+	// no match returned
+	if len(r2) > 0 {
+		// iterate over the matches and translate them to a map
+		for i, n := range r2[0] {
+			md[n1[i]] = n
+		}
+	}
+
+	return md
 }

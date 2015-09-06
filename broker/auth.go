@@ -6,6 +6,7 @@ import "github.com/alsm/hrotti/packets"
 type AuthContext interface {
 	GetUserID() string
 	CheckPublish(*packets.PublishPacket) bool
+	CheckSubscription(topics []string, qoss []byte) ([]string, []byte)
 }
 
 type defaultAuthContext struct{}
@@ -16,6 +17,10 @@ func (defaultAuthContext) GetUserID() string {
 
 func (defaultAuthContext) CheckPublish(*packets.PublishPacket) bool {
 	return true
+}
+
+func (defaultAuthContext) CheckSubscription(topics []string, qoss []byte) ([]string, []byte) {
+	return topics, qoss
 }
 
 // AuthHandler called for each authentication

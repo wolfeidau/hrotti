@@ -307,7 +307,11 @@ func (c *Client) Receive(hrotti *Hrotti) {
 			case *packets.SubscribePacket:
 				PROTOCOL.Println("Received SUBSCRIBE from", c.clientID)
 				sp := cp.(*packets.SubscribePacket)
-				rQos := hrotti.AddSubscription(c, sp.Topics, sp.Qoss)
+
+				// filter the topics based on permission
+				pTopics, pQoss := c.authContext.CheckSubscription(sp.Topics, sp.Qoss)
+
+				rQos := hrotti.AddSubscription(c, pTopics, pQoss)
 				sa := packets.NewControlPacket(packets.SUBACK).(*packets.SubackPacket)
 				sa.MessageID = sp.MessageID
 				sa.GrantedQoss = append(sa.GrantedQoss, rQos...)
