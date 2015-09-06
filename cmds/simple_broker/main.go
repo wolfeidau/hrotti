@@ -11,14 +11,17 @@ import (
 	hrotti "github.com/alsm/hrotti/broker"
 	"github.com/alsm/hrotti/packets"
 	"github.com/alsm/hrotti/store"
+	"github.com/alsm/hrotti/timeseries"
 )
 
 // postgres://postgres@localhost:5432/devise-doorkeeper-cancan-api-example_development
 func main() {
 	userStore := store.NewPostgresStore("")
+	tsStore := timeseries.NewInfluxDBTSStore()
 
 	r := &hrotti.MemoryPersistence{}
 	h := hrotti.NewHrotti(100, r, newAuthHandler(userStore))
+	hrotti.DefaultTapHandler = newTapHandler(tsStore)
 	hrotti.ERROR = log.New(os.Stdout, "ERROR: ", log.Ldate|log.Ltime)
 	hrotti.INFO = log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime)
 	hrotti.DEBUG = log.New(os.Stdout, "DEBUG: ", log.Ldate|log.Ltime)
@@ -60,13 +63,13 @@ func (lac *localAuthContext) GetUserID() string {
 	return lac.UserID
 }
 
-var re = regexp.MustCompile(`^(?P<uid>[\w-]+)\..*$`)
+var checkPubRe = regexp.MustCompile(`^(?P<uid>[\w-]+)\..*$`)
 
 func (lac *localAuthContext) CheckPublish(pp *packets.PublishPacket) bool {
 
 	hrotti.DEBUG.Printf("Check Publish topic=%s", pp.TopicName)
 
-	md := checkTopicName(pp.TopicName)
+	md := checkTopicName(checkPubRe, pp.TopicName)
 
 	if md["uid"] == lac.GetUserID() {
 		return true
@@ -80,7 +83,7 @@ func (lac *localAuthContext) CheckPublish(pp *packets.PublishPacket) bool {
 func (lac *localAuthContext) CheckSubscription(topics []string, qoss []byte) ([]string, []byte) {
 
 	for i, t := range topics {
-		md := checkTopicName(t)
+		md := checkTopicName(checkPubRe, t)
 
 		if md["uid"] != lac.GetUserID() {
 			hrotti.INFO.Printf("Skipped Subscription topic=%s qos=%x", t, qoss[i])
@@ -91,7 +94,7 @@ func (lac *localAuthContext) CheckSubscription(topics []string, qoss []byte) ([]
 	return topics, qoss
 }
 
-func checkTopicName(topic string) map[string]string {
+func checkTopicName(re *regexp.Regexp, topic string) map[string]string {
 	n1 := re.SubexpNames()
 	r2 := re.FindAllStringSubmatch(topic, -1)
 
@@ -103,7 +106,29 @@ func checkTopicName(topic string) map[string]string {
 		for i, n := range r2[0] {
 			md[n1[i]] = n
 		}
+		delete(md, "")
 	}
 
 	return md
+}
+
+var metricRe = regexp.MustCompile(`^(?P<uid>[\w-]+)\.(?P<serial_no>[\w-]+)\/(?P<device>[\w-]+)\/(?P<device_index>[\w-]+)\/(?P<type>[\w-]+)$`)
+
+func newTapHandler(tss timeseries.TSStore) hrotti.TapHandler {
+	return func(cp packets.ControlPacket) {
+		hrotti.DEBUG.Printf("msg=%q", cp.UUID())
+
+		switch cp.(type) {
+		case *packets.PublishPacket:
+			pp := cp.(*packets.PublishPacket)
+			md := checkTopicName(metricRe, pp.TopicName)
+			mm := md["type"]
+			delete(md, "type")
+			hrotti.DEBUG.Printf("md=%q", md)
+			if md["uid"] != "" {
+				tss.WritePoints(mm, md, string(pp.Payload))
+			}
+		}
+	}
+
 }

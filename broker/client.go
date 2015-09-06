@@ -247,6 +247,7 @@ func (c *Client) Receive(hrotti *Hrotti) {
 				if c.authContext.CheckPublish(pp) {
 					//go and deliver the message to any subscribers.
 					go hrotti.DeliverMessage(pp.TopicName, pp)
+					go DefaultTapHandler(pp)
 				}
 				//if the message was QoS1 or QoS2 start the acknowledgement flows.
 				switch pp.Qos {
