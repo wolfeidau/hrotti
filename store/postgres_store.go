@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"log"
 
-	_ "github.com/lib/pq"
+	_ "github.com/lib/pq" // imported for database/sql package
 )
 
 // PostgresStore postgres implementation of the user store
@@ -41,8 +41,6 @@ func (s *PostgresStore) Health() bool {
 
 // AuthUser validate the credentials against Postgres.
 func (s *PostgresStore) AuthUser(token string) (string, error) {
-
-	log.Println("user token")
 
 	var uid string
 

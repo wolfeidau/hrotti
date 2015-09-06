@@ -1,16 +1,17 @@
 package hrotti
 
 import (
-	. "github.com/alsm/hrotti/packets"
 	"strings"
 	"sync"
+
+	"github.com/alsm/hrotti/packets"
 )
 
 type subscriptionMap struct {
 	subElements map[string][]string
 	subMap      map[string]map[string]byte
 	subBitmap   []map[string]map[string]bool
-	retained    map[string]*PublishPacket
+	retained    map[string]*packets.PublishPacket
 	sync.RWMutex
 }
 
@@ -21,15 +22,15 @@ func newSubMap() *subscriptionMap {
 	s.subElements = make(map[string][]string)
 	s.subMap = make(map[string]map[string]byte)
 	s.subBitmap = make([]map[string]map[string]bool, 10)
-	for i, _ := range s.subBitmap {
+	for i := range s.subBitmap {
 		s.subBitmap[i] = make(map[string]map[string]bool)
 	}
-	s.retained = make(map[string]*PublishPacket)
+	s.retained = make(map[string]*packets.PublishPacket)
 
 	return s
 }
 
-func (s *subscriptionMap) SetRetained(topic string, message *PublishPacket) {
+func (s *subscriptionMap) SetRetained(topic string, message *packets.PublishPacket) {
 	DEBUG.Println("Setting retained message for", topic)
 	s.RLock()
 	defer s.RUnlock()
@@ -67,7 +68,7 @@ func match(route []string, topic []string) bool {
 }
 
 func (h *Hrotti) FindRetained(id string, topic string, qos byte) {
-	var deliverList []*PublishPacket
+	var deliverList []*packets.PublishPacket
 	client := h.getClient(id)
 	if strings.ContainsAny(topic, "#+") {
 		for rTopic, msg := range h.subs.retained {
@@ -143,7 +144,7 @@ func (h *Hrotti) DeleteSubAll(client string) {
 	}
 }
 
-func (h *Hrotti) DeliverMessage(topic string, message *PublishPacket) {
+func (h *Hrotti) DeliverMessage(topic string, message *packets.PublishPacket) {
 	h.subs.RLock()
 	topicElements := strings.Split(topic, "/")
 	var matches []string
@@ -153,13 +154,13 @@ func (h *Hrotti) DeliverMessage(topic string, message *PublishPacket) {
 		DEBUG.Println("Searching bitmap level", i, element)
 		switch i {
 		case 0:
-			for sub, _ := range h.subs.subBitmap[i][element] {
+			for sub := range h.subs.subBitmap[i][element] {
 				matches = append(matches, sub)
 			}
-			for sub, _ := range h.subs.subBitmap[i]["+"] {
+			for sub := range h.subs.subBitmap[i]["+"] {
 				matches = append(matches, sub)
 			}
-			for sub, _ := range h.subs.subBitmap[i]["#"] {
+			for sub := range h.subs.subBitmap[i]["#"] {
 				hashMatches = append(hashMatches, sub)
 			}
 		default:

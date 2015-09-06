@@ -7,9 +7,10 @@ import (
 	"net/url"
 	"sync"
 
+	"github.com/alsm/hrotti/packets"
+
 	"code.google.com/p/go-uuid/uuid"
 	"code.google.com/p/go.net/websocket"
-	. "github.com/alsm/hrotti/packets"
 )
 
 type Hrotti struct {
@@ -150,39 +151,39 @@ func (h *Hrotti) Stop() {
 func (h *Hrotti) InitClient(conn net.Conn) {
 	var sendSessionID bool
 
-	rp, _ := ReadPacket(conn)
-	cp := rp.(*ConnectPacket)
+	rp, _ := packets.ReadPacket(conn)
+	cp := rp.(*packets.ConnectPacket)
 
 	//Validate the CONNECT, check fields, values etc.
 	rc := cp.Validate()
 	//If it didn't validate...
-	if rc != CONN_ACCEPTED {
+	if rc != packets.CONN_ACCEPTED {
 		//and it wasn't because of a protocol violation...
-		if rc != CONN_PROTOCOL_VIOLATION {
+		if rc != packets.CONN_PROTOCOL_VIOLATION {
 			//create and send a CONNACK with the correct rc in it.
-			ca := NewControlPacket(CONNACK).(*ConnackPacket)
+			ca := packets.NewControlPacket(packets.CONNACK).(*packets.ConnackPacket)
 			ca.ReturnCode = rc
 			ca.Write(conn)
 		}
 		//Put up a local message indicating an errored connection attempt and close the connection
-		ERROR.Println(ConnackReturnCodes[rc], conn.RemoteAddr())
+		ERROR.Println(packets.ConnackReturnCodes[rc], conn.RemoteAddr())
 		conn.Close()
 		return
 	} else {
 		//Put up an INFO message with the client id and the address they're connecting from.
-		INFO.Println(ConnackReturnCodes[rc], cp.ClientIdentifier, conn.RemoteAddr())
+		INFO.Println(packets.ConnackReturnCodes[rc], cp.ClientIdentifier, conn.RemoteAddr())
 	}
 
 	// check the auth handler
-	userID, err:= h.authHandler(cp)
+	authContext, err := h.authHandler(cp)
 
 	if err != nil {
 		//create and send a CONNACK with the correct rc in it.
-		ca := NewControlPacket(CONNACK).(*ConnackPacket)
-		ca.ReturnCode = CONN_REF_BAD_USER_PASS
+		ca := packets.NewControlPacket(packets.CONNACK).(*packets.ConnackPacket)
+		ca.ReturnCode = packets.CONN_REF_BAD_USER_PASS
 		ca.Write(conn)
 		//Put up a local message indicating an errored connection attempt and close the connection
-		ERROR.Println(ConnackReturnCodes[rc], conn.RemoteAddr())
+		ERROR.Println(packets.ConnackReturnCodes[rc], conn.RemoteAddr())
 		conn.Close()
 		return
 	}
@@ -206,8 +207,8 @@ func (h *Hrotti) InitClient(conn net.Conn) {
 			//if the clientid known but not connected, ie cleansession false
 			INFO.Println("Durable client reconnecting", c.clientID)
 			//disconnected client will no longer have the channels for messages
-			c.outboundMessages = make(chan *PublishPacket, h.maxQueueDepth)
-			c.outboundPriority = make(chan ControlPacket, h.maxQueueDepth)
+			c.outboundMessages = make(chan *packets.PublishPacket, h.maxQueueDepth)
+			c.outboundPriority = make(chan packets.ControlPacket, h.maxQueueDepth)
 		}
 		//this function stays running until the client disconnects as the function called by an http
 		//Handler has to remain running until its work is complete. So add one to the client waitgroup.
@@ -221,11 +222,11 @@ func (h *Hrotti) InitClient(conn net.Conn) {
 		go c.Start(cp, h)
 	} else {
 		//This is a brand new client so create a NewClient and add to the clients map
-		c = newClient(conn, cp.ClientIdentifier, userID, h.maxQueueDepth)
+		c = newClient(conn, cp.ClientIdentifier, authContext, h.maxQueueDepth)
 		h.clients.list[cp.ClientIdentifier] = c
 		if sendSessionID {
 			go func() {
-				sessionIDPacket := NewControlPacket(PUBLISH).(*PublishPacket)
+				sessionIDPacket := packets.NewControlPacket(packets.PUBLISH).(*packets.PublishPacket)
 				sessionIDPacket.TopicName = "$SYS/session_identifier"
 				sessionIDPacket.Payload = []byte(cp.ClientIdentifier)
 				sessionIDPacket.Qos = 1

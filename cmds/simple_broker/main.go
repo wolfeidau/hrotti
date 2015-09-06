@@ -5,10 +5,11 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"regexp"
 	"syscall"
 
 	hrotti "github.com/alsm/hrotti/broker"
-	. "github.com/alsm/hrotti/packets"
+	"github.com/alsm/hrotti/packets"
 	"github.com/alsm/hrotti/store"
 )
 
@@ -30,15 +31,57 @@ func main() {
 }
 
 func newHandler(store store.Store) hrotti.AuthHandler {
-	return func(cp *ConnectPacket) (string, error) {
+	return func(cp *packets.ConnectPacket) (hrotti.AuthContext, error) {
 
 		if cp.UsernameFlag {
 
 			// check the username contains a valid token
-			return store.AuthUser(cp.Username)
+			uid, err := store.AuthUser(cp.Username)
+
+			if err != nil {
+				return nil, err
+			}
+
+			hrotti.DEBUG.Printf("Authenticated uid=%s", uid)
+
+			return &localAuthContext{uid}, nil
 
 		}
 
-		return "", fmt.Errorf("auth failed")
+		return nil, fmt.Errorf("auth failed")
 	}
+}
+
+type localAuthContext struct {
+	UserID string
+}
+
+func (lac *localAuthContext) GetUserID() string {
+	return lac.UserID
+}
+
+var re = regexp.MustCompile(`^(?P<uid>[\w-]+)\..*$`)
+
+func (lac *localAuthContext) CheckPublish(pp *packets.PublishPacket) bool {
+	hrotti.DEBUG.Printf("Check Publish topic=%s", pp.TopicName)
+
+	n1 := re.SubexpNames()
+	r2 := re.FindAllStringSubmatch(pp.TopicName, -1)
+
+	// no match returned
+	if len(r2) > 0 {
+
+		md := map[string]string{}
+		for i, n := range r2[0] {
+			md[n1[i]] = n
+		}
+
+		if md["uid"] == lac.GetUserID() {
+			return true
+		}
+	}
+
+	hrotti.INFO.Printf("Skipped Publish topic=%s", pp.TopicName)
+
+	return false
 }
