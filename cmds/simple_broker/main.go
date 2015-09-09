@@ -63,7 +63,7 @@ func (lac *localAuthContext) GetUserID() string {
 	return lac.UserID
 }
 
-var checkPubRe = regexp.MustCompile(`^(?P<uid>[\w-]+)\..*$`)
+var checkPubRe = regexp.MustCompile(`^(?P<uid>[\w-]+)\/.*$`)
 
 func (lac *localAuthContext) CheckPublish(pp *packets.PublishPacket) bool {
 
@@ -112,7 +112,7 @@ func checkTopicName(re *regexp.Regexp, topic string) map[string]string {
 	return md
 }
 
-var metricRe = regexp.MustCompile(`^(?P<uid>[\w-]+)\.(?P<serial_no>[\w-]+)\/(?P<device>[\w-]+)\/(?P<device_index>[\w-]+)\/(?P<type>[\w-]+)$`)
+var metricRe = regexp.MustCompile(`^(?P<uid>[\w-]+)\/(?P<serial_no>[\w-]+)\/(?P<device>[\w-]+)\/(?P<device_index>[\w-]+)\/(?P<type>[\w-]+)$`)
 
 func newTapHandler(tss timeseries.TSStore) hrotti.TapHandler {
 	return func(cp packets.ControlPacket) {

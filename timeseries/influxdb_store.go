@@ -73,8 +73,6 @@ func (its *InfluxDBTSStore) WritePoints(measurement string, tags map[string]stri
 		RetentionPolicy: "default",
 	}
 
-	log.Printf("influx %s %v", measurement, pts)
-
 	_, err = its.con.Write(bps)
 
 	return
